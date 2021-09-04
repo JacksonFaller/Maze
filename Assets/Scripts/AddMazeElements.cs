@@ -1,4 +1,6 @@
 ﻿using Assets.Scripts._3DMaze;
+using Assets.Scripts.Classes;
+using System.Linq;
 using UnityEngine;
 
 namespace Assets.Scripts
@@ -11,11 +13,13 @@ namespace Assets.Scripts
 
         private Camera _camera;
 
-        private Element _selectedElement;
+        private Elements _selectedElementsItem;
+        private MazeGenerator.Flags _selectedElementFlag;
 
-        private MazeGenerator.Flags _elements = MazeGenerator.Flags.FAKE_TREASURE | MazeGenerator.Flags.KEY |
-                                               MazeGenerator.Flags.PIT | MazeGenerator.Flags.TRAP |
-                                               MazeGenerator.Flags.TREASURE;
+        private readonly MazeGenerator.Flags _elements = MazeGenerator.Flags.FAKE_TREASURE | 
+            MazeGenerator.Flags.KEY | MazeGenerator.Flags.PIT | 
+            MazeGenerator.Flags.TRAP | MazeGenerator.Flags.TREASURE;
+
         [SerializeField] 
         private LayerMask _cellsMask;
 
@@ -23,65 +27,61 @@ namespace Assets.Scripts
         private LayerMask _outerWallsMask;
 
         [SerializeField]
-        private Transform _key;
+        private MazeElement _key;
 
         [SerializeField]
-        private Transform _pit;
+        private MazeElement _pit;
 
         [SerializeField]
-        private Transform _treasure;
+        private MazeElement _treasure;
 
         [SerializeField]
-        private Transform _fakeTreasure;
+        private MazeElement _fakeTreasure;
 
         [SerializeField]
-        private Transform _trap;
+        private MazeElement _trap;
 
         [SerializeField]
-        private Transform _exit;
+        private MazeElement _exit;
 
-        public Element Key { get; set; }
-        public Element Pit { get; set; }
-        public Element Treasure { get; set; }
-        public Element FakeTreasure { get; set; }
-        public Element Trap { get; set; }
-        public Element Exit { get; set; }
-
-        public MazeGenerator.Flags SelectedElementFlag { get; set; }
+        public Elements Keys { get; set; }
+        public Elements Pits { get; set; }
+        public Elements Treasures { get; set; }
+        public Elements FakeTreasures { get; set; }
+        public Elements Traps { get; set; }
+        public Elements Exits { get; set; }
 
         void Start ()
         {
             _camera = Camera.main;
             _elementsContainer = new GameObject("Elements").transform;
             //GroupUpElements(_elementsContainer, Exit, Key, FakeTreasure, Treasure, Trap, Pit);
-            SelectedElementFlag = 0;
-            Key = new Element(2, _key);
-            Treasure = new Element(2, _treasure);
-            Exit = new Element(4, _exit);
-            GroupUpElements(_elementsContainer, Exit, Key, Treasure);
+            _selectedElementFlag = 0;
+            Keys = new Elements(_key.Count, _key.Transform, _key.Counter);
+            Treasures = new Elements(_treasure.Count, _treasure.Transform, _treasure.Counter);
+            Exits = new Elements(_exit.Count, _exit.Transform, _exit.Counter);
+            FakeTreasures = new Elements(_fakeTreasure.Count, _fakeTreasure.Transform, _fakeTreasure.Counter);
+            Traps = new Elements(_trap.Count, _trap.Transform, _trap.Counter);
+            Pits = new Elements(_pit.Count, _pit.Transform, _pit.Counter);
+            GroupUpElements(_elementsContainer, Exits, Keys, Treasures, FakeTreasures, Traps, Pits);
         }
 
-        void FixedUpdate()
+        void Update()
         {
             if (Input.GetMouseButtonDown(0))
             {
                 RaycastHit hit;
                 Ray ray =  _camera.ScreenPointToRay(Input.mousePosition);
-
-                if(_selectedElement == null) return;
-                if (SelectedElementFlag == MazeGenerator.Flags.EXIT)
+                if (_selectedElementsItem == null) return;
+                if (_selectedElementFlag == MazeGenerator.Flags.EXIT)
                 {
                     if (Physics.Raycast(ray, out hit, 100, _outerWallsMask))
-                    {
                         AffectExitElement(hit.transform);
-                    }
                 }
                 else
                 {
                     if (Physics.Raycast(ray, out hit, 100, _cellsMask))
-                    {
                         AffectElement(hit.transform);
-                    }
                 }
             }
         }
@@ -94,43 +94,65 @@ namespace Assets.Scripts
         {
             Point position = objectHit.GetComponent<CellPosition>().Position;
             MazeGenerator.Flags flag;
-
+            bool exitExists = false;
             // Right and left walls
             if (objectHit.rotation.y == 0)
             {
-                flag = position.y == 0 ? MazeGenerator.Flags.WALL_LEFT : MazeGenerator.Flags.WALL_RIGHT;
+                if(position.Y == 0)
+                {
+                    if (Exits.Any(x => x.Position?.Y == 0)) exitExists = true;
+                    flag = MazeGenerator.Flags.WALL_LEFT;
+                }
+                else
+                {
+                    if (Exits.Any(x => x.Position?.Y == _maze.GetLength(1) - 1)) exitExists = true;
+                    flag = MazeGenerator.Flags.WALL_RIGHT;
+                }
             }
             // Up and down walls
             else
             {
-                flag = position.x == 0 ? MazeGenerator.Flags.WALL_DOWN : MazeGenerator.Flags.WALL_UP;
+                if (position.X == 0)
+                {
+                    if (Exits.Any(x => x.Position?.X == 0)) exitExists = true;
+                    flag = MazeGenerator.Flags.WALL_DOWN;
+                }
+                else
+                {
+                    if (Exits.Any(x => x.Position?.X == _maze.GetLength(0) - 1)) exitExists = true;
+                    flag = MazeGenerator.Flags.WALL_UP;
+                }
             }
-            // Add exit
-            if ((_maze[position.x, position.y, 0] & flag) == flag)
-            {
-                if (_selectedElement.ElementsNumber <= 0) return;
-                _selectedElement.ElementsNumber--;
-                _maze[position.x, position.y, 0] ^= flag;
 
-                int index = _selectedElement.Positions.IndexOf(null);
-                _selectedElement[index].position = objectHit.position;
-                _selectedElement[index].gameObject.SetActive(true);
+            // Add exit
+            if ((_maze[position.X, position.Y, 0] & MazeGenerator.Flags.EXIT) == 0)
+            {
+                if (_selectedElementsItem.ElementsCount <= 0 || exitExists) return;
+                
+                _selectedElementsItem.DecrementCounter();
+                _maze[position.X, position.Y, 0] ^= flag;
+                _maze[position.X, position.Y, 0] |= MazeGenerator.Flags.EXIT;
+
+                var element = _selectedElementsItem.First(x => x.Position == null);
+                element.Transform.position = objectHit.position;
+                element.Transform.gameObject.SetActive(true);
                 objectHit.GetComponent<MeshRenderer>().enabled = false;
-                _selectedElement.Positions[index] = new Point(position.x, position.y);
+                element.Position = new Point(position.X, position.Y);
             }
             // Remove exit
             else
             {
-                _selectedElement.ElementsNumber++;
-                _maze[position.x, position.y, 0] |= flag;
+                _maze[position.X, position.Y, 0] |= flag;
+                _maze[position.X, position.Y, 0] ^= MazeGenerator.Flags.EXIT;
 
-                Point point = new Point(position.x, position.y);
-                int index = _selectedElement.Positions.IndexOf(point);
+                var point = new Point(position.X, position.Y);
+                var element = _selectedElementsItem.First(x => point.Equals(x.Position));
 
-                _selectedElement[index].position = objectHit.position;
-                _selectedElement[index].gameObject.SetActive(false);
+                element.Transform.position = objectHit.position;
+                element.Transform.gameObject.SetActive(false);
                 objectHit.GetComponent<MeshRenderer>().enabled = true;
-                _selectedElement.Positions[index] = null;
+                element.Position = null;
+                _selectedElementsItem.IncrementCounter();
             }
             //Debug.DrawRay(ray.origin, ray.direction * 500, Color.green, 15f);
         }
@@ -143,68 +165,68 @@ namespace Assets.Scripts
         {
             Point position = objectHit.GetComponent<CellPosition>().Position;
 
-            if ((_maze[position.x, position.y, 0] & SelectedElementFlag) == 0)
+            if ((_maze[position.X, position.Y, 0] & _selectedElementFlag) == 0)
             {
-                if((_maze[position.x, position.y, 0] & _elements) != 0) return;
+                if((_maze[position.X, position.Y, 0] & _elements) != 0) return;
 
-                if (_selectedElement.ElementsNumber <= 0) return;
-                _selectedElement.ElementsNumber--;
-                _maze[position.x, position.y, 0] |= SelectedElementFlag;
+                if (_selectedElementsItem.ElementsCount <= 0) return;
+                _selectedElementsItem.DecrementCounter();
+                _maze[position.X, position.Y, 0] |= _selectedElementFlag;
 
-                int index = _selectedElement.Positions.IndexOf(null);
-                _selectedElement[index].position = objectHit.position;
-                _selectedElement[index].gameObject.SetActive(true);
-                _selectedElement.Positions[index] = new Point(position.x, position.y);
+                var element = _selectedElementsItem.First(x => x.Position == null);
+                element.Transform.position = objectHit.position;
+                element.Transform.gameObject.SetActive(true);
+                element.Position = new Point(position.X, position.Y);
             }
             else
             {
-                _selectedElement.ElementsNumber++;
-                _maze[position.x, position.y, 0] ^= SelectedElementFlag;
+                _selectedElementsItem.IncrementCounter();
+                _maze[position.X, position.Y, 0] ^= _selectedElementFlag;
 
-                Point point = new Point(position.x, position.y);
-                int index = _selectedElement.Positions.IndexOf(point);
+                Point point = new Point(position.X, position.Y);
+                var element = _selectedElementsItem.First(x => point.Equals(x.Position));
 
-                _selectedElement[index].position = objectHit.position;
-                _selectedElement[index].gameObject.SetActive(false);
-                _selectedElement.Positions[index] = null;
+                element.Transform.position = objectHit.position;
+                element.Transform.gameObject.SetActive(false);
+                element.Position = null;
             }
             //Debug.DrawRay(ray.origin, ray.direction * 500, Color.green, 15f); 
         }
 
-        private Element GetSelectedElement(MazeGenerator.Flags elementFlag)
+        private Elements GetSelectedElement(MazeGenerator.Flags elementFlag)
         {
-            Element selectedElement;
+            Elements selectedElement;
 
             switch (elementFlag)
             {
                 case MazeGenerator.Flags.EXIT:
                 {
-                    selectedElement = Exit;
+                    selectedElement = Exits;
                     break;
                 }
                 case MazeGenerator.Flags.TRAP:
                 {
-                    selectedElement = Trap;
+                    selectedElement = Traps;
                     break;
                 }
                 case MazeGenerator.Flags.TREASURE:
                 {
-                    selectedElement = Treasure;
+                    selectedElement = Treasures;
                     break;
                 }
                 case MazeGenerator.Flags.FAKE_TREASURE:
                 {
-                    selectedElement = FakeTreasure;
+                    selectedElement = FakeTreasures;
                     break;
                 }
                 case MazeGenerator.Flags.PIT:
                 {
-                    selectedElement = Pit;
+                    selectedElement = Pits;
                     break;
                 }
                 case MazeGenerator.Flags.KEY:
                 {
-                    selectedElement = Key;
+                    selectedElement = Keys;
                     break;
                 }
                 default:
@@ -215,9 +237,10 @@ namespace Assets.Scripts
             return selectedElement;
         }
 
-        public void UpdateSelectedElement()
+        public void UpdateSelectedElement(MazeGenerator.Flags flag)
         {
-            _selectedElement = GetSelectedElement(SelectedElementFlag);
+            _selectedElementFlag = flag;
+            _selectedElementsItem = GetSelectedElement(_selectedElementFlag);
         }
 
         public void SetMaze(MazeGenerator.Flags[,,] maze)
@@ -225,11 +248,11 @@ namespace Assets.Scripts
             _maze = maze;
         }
 
-        private void GroupUpElements(Transform container, params Element[] elements)
+        private void GroupUpElements(Transform container, params Elements[] elements)
         {
             foreach (var element in elements)
             {
-                foreach (var transform in element.ElementTransforms)
+                foreach (var transform in element.Select(x => x.Transform))
                 {
                     transform.SetParent(container);
                 }
@@ -239,6 +262,11 @@ namespace Assets.Scripts
         public void CleanUp()
         {
             Destroy(_elementsContainer.gameObject);
+        }
+
+        public void SelectElement(MazeGenerator.Flags flags)
+        {
+
         }
     }
 }

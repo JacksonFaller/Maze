@@ -1,5 +1,6 @@
 ﻿using Assets.Scripts._3DMaze;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Assets.Scripts
 {
@@ -12,16 +13,22 @@ namespace Assets.Scripts
         [SerializeField]
         private AddMazeElements _mazeElements;
 
+        private static Button _selectedElement;
+
         // Use this for initialization
         void Start ()
         {
-	
+	        
         }
 
         public void SelectElement()
         {
-            _mazeElements.SelectedElementFlag = _elementFlag;
-            _mazeElements.UpdateSelectedElement();
+            _mazeElements.UpdateSelectedElement(_elementFlag);
+            var button = GetComponent<Button>();
+            if (_selectedElement != null)
+                _selectedElement.interactable = true;
+            button.interactable = false;
+            _selectedElement = button;
         }
     }
 }

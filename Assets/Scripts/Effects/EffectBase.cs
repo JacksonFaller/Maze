@@ -3,7 +3,6 @@ using System.Collections;
 using Assets.Scripts;
 using Assets.Scripts.Effects;
 using UnityEngine.EventSystems;
-using UnityStandardAssets.Utility;
 
 public class EffectBase : MonoBehaviour
 {

@@ -10,8 +10,12 @@ namespace Assets.Scripts
     public class DrawMap : MonoBehaviour
     {
         private float _cellSize;
-        private readonly float _heightToWidthRatio = 3f;
-        private readonly float _cellsizeToWidthRatio = 210;
+
+        [SerializeField]
+        private float _heightToWidthRatio = 3f;
+
+        [SerializeField]
+        private float _cellsizeToWidthRatio = 210;
         private RectTransform _mapTransform;
 
         [SerializeField]
@@ -65,7 +69,7 @@ namespace Assets.Scripts
             _outerRightWall.Rotate(Vector3.forward, 90);
             _rightWall = Instantiate(_upWall);
             _rightWall.Rotate(Vector3.forward, 90);
-            _mazeB = new GameObject("MazeB").transform;
+            _mazeB = new GameObject("MazeB", typeof(RectTransform)).transform;
             //_upWall = Instantiate(_upWall);
         }
 
@@ -156,8 +160,12 @@ namespace Assets.Scripts
             _mazeB.position = new Vector3(currentX / 2 + _wallWidth - cellSize / 2, currentY / 2 + _wallWidth / 2 - cellSize / 2);
             _wallsContainer.SetParent(_mazeB);
             _elements.SetParent(_mazeB);
-            _mazeB.position = _mapTransform.position;
             _mazeB.SetParent(_mapTransform);
+            var rectTransform = _mazeB.gameObject.GetComponent<RectTransform>();
+            rectTransform.sizeDelta = _mapTransform.sizeDelta;
+            rectTransform.anchorMin = _mapTransform.anchorMin;
+            rectTransform.anchorMax = _mapTransform.anchorMax;
+            rectTransform.anchoredPosition = new Vector2(-_mapTransform.sizeDelta.x / 2, _mapTransform.sizeDelta.y / 2);
         }
 
         private Transform GetObjectByFlag(MazeGenerator.Flags objectFlag)
